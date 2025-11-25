@@ -14,7 +14,6 @@ Sports Non-Verbal Communication Video Annotator
   - Left/Right Arrow: Jump forward/backward 3 seconds
 
 
----
 
 # Annotation System
 - Predefined non-verbal communication action buttons  
@@ -24,7 +23,9 @@ Sports Non-Verbal Communication Video Annotator
 - Delete any annotation  
 - Export all annotations as `annotations.json`  
 
-Definitions:
+
+
+# Definitions:
 
 - Eye Contact  
  - Intentional glance used to signal:
@@ -69,7 +70,8 @@ Definitions:
    - “Backdoor signal”  
 
 
-- Annotation Controls
+
+# Annotation Controls
  - Action Buttons: Add an annotation with that label 
   - Game Clock Input: Optional text like “10:45 Q2” 
   - Custom Annotation (“Other”): Enter custom label + click “Add Other” 
@@ -79,10 +81,11 @@ Definitions:
   - Export: Download "annotations.json" or whatever the user names the file
 
 
-- Export Format
+
+# Export Format
 - Exports an array of JSON objects like:
 
-```json
+ - json
 {
   "id": 1732461123456,
   "type": "Screen",
@@ -91,3 +94,30 @@ Definitions:
   "formattedTime": "0:32",
   "gameClockTime": "9:12 Q1" (if applicable)
 }
+
+ - csv
+
+{ id,type,label,timestamp,formattedTime,gameClockTime }
+
+
+
+
+# How to Run
+
+To run the annotator locally: 
+
+ - 1. Install Dependencies
+  - Have **Node.js** installed (version 16+ recommended).  
+
+ - 2. Then, in the project folder, run:
+  npm install
+
+ - 3. Start the Development Server
+  Run: npm start
+
+- This will start the app at:
+  
+   http://localhost:3000
+
+
+
