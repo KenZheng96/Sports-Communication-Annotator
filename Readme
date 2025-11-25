@@ -109,7 +109,7 @@ To run the annotator locally:
  - 1. Install Dependencies
   - Have **Node.js** installed (version 16+ recommended).  
 
- - 2. Then, in the project folder, run:
+ - 2. Then, in the project folder, run once:
   npm install
 
  - 3. Start the Development Server
