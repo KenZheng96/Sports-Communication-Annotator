@@ -71,17 +71,16 @@ Definitions:
 
 - Annotation Controls
  - Action Buttons: Add an annotation with that label 
-| Game Clock Input | Optional text like “10:45 Q2” 
-| Custom Annotation (“Other”) | Enter custom label + click “Add Other” 
-| Annotation List | Shows events newest → oldest 
-| Click Annotation | Jump to annotation time 
-| Trash Icon | Delete annotation 
-| Export | Download "annotations.json"
+  - Game Clock Input: Optional text like “10:45 Q2” 
+  - Custom Annotation (“Other”): Enter custom label + click “Add Other” 
+  - Annotation List: Shows events newest → oldest 
+  - Click Annotation: Jump to annotation time 
+  - Trash Icon: Delete annotation 
+  - Export: Download "annotations.json" or whatever the user names the file
 
 
 - Export Format
-
-Exports an array of JSON objects like:
+- Exports an array of JSON objects like:
 
 ```json
 {
