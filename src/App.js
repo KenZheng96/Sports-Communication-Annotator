@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Upload, Download, Trash2, Camera, Square } from 'lucide-react';
-import Tesseract from 'tesseract.js';
+import { Play, Pause, Upload, Download, Trash2, Volume2, VolumeX } from 'lucide-react';
 
 export default function VideoAnnotator() {
   const [videoSrc, setVideoSrc] = useState(null);
@@ -9,46 +8,45 @@ export default function VideoAnnotator() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [gameClockTime, setGameClockTime] = useState('');
-  const [ocrRegion, setOcrRegion] = useState(null);
-  const [isSelectingRegion, setIsSelectingRegion] = useState(false);
-  const [dragStart, setDragStart] = useState(null);
-  const [ocrText, setOcrText] = useState('');
-  const [isProcessingOcr, setIsProcessingOcr] = useState(false);
-  const [autoOcrEnabled, setAutoOcrEnabled] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [customAnnotation, setCustomAnnotation] = useState('');
+  const [volume, setVolume] = useState(1);
+  const [prevVolume, setPrevVolume] = useState(1);
+  const [exportName, setExportName] = useState('annotations');
+
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
-  const canvasRef = useRef(null);
-  const videoContainerRef = useRef(null);
 
-  // Non-verbal communication action types
   const actionTypes = [
     { id: 'Eye Contact', label: 'Eye Contact', color: 'bg-blue-500' },
     { id: 'Screen', label: 'Screen', color: 'bg-green-500' },
     { id: 'Direct', label: 'Directing', color: 'bg-red-500' },
     { id: 'Call for Ball', label: 'Call for Ball', color: 'bg-purple-500' },
-    { id: 'Defensive Swtich', label: 'Defensive Switch', color: 'bg-yellow-500' },
+    { id: 'Defensive Switch', label: 'Defensive Switch', color: 'bg-yellow-500' },
     { id: 'Nod', label: 'Nod', color: 'bg-indigo-500' }
   ];
 
-  // Spacebar to play/pause
+  // Keyboard: space + left/right skip
   useEffect(() => {
     const handleKeyPress = (e) => {
-      if (e.code === 'Space' && videoRef.current && !e.target.matches('input, textarea')) {
+      if (!videoRef.current || e.target.matches('input, textarea')) return;
+
+      if (e.code === 'Space') {
         e.preventDefault();
-        if (videoRef.current) {
-          if (videoRef.current.paused) {
-            videoRef.current.play();
-          } else {
-            videoRef.current.pause();
-          }
-          setIsPlaying(!videoRef.current.paused);
-        }
+        videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause();
+        setIsPlaying(!videoRef.current.paused);
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        seekBy(3);
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        seekBy(-3);
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+  }, [currentTime, duration]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -57,260 +55,166 @@ export default function VideoAnnotator() {
       setVideoSrc(url);
       setAnnotations([]);
       setCurrentTime(0);
-      setOcrRegion(null);
-      setOcrText('');
-      setAutoOcrEnabled(false);
+      setPlaybackSpeed(1);
+      setVolume(1);
+      setPrevVolume(1);
     }
   };
 
   const handlePlayPause = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
+    if (!videoRef.current) return;
+    if (isPlaying) videoRef.current.pause();
+    else videoRef.current.play();
+    setIsPlaying(!isPlaying);
   };
 
-  const handleVideoClick = () => {
-    handlePlayPause();
-  };
+  const handleVideoClick = () => handlePlayPause();
 
   const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
+    if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
   };
 
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
+      videoRef.current.playbackRate = playbackSpeed;
+      videoRef.current.volume = volume;
+      videoRef.current.muted = volume === 0;
     }
   };
 
   const handleSeek = (e) => {
-    const scrubBar = e.currentTarget;
-    const rect = scrubBar.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const pos = (e.clientX - rect.left) / rect.width;
     const newTime = pos * duration;
-    
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const seekBy = (delta) => {
+    const newTime = Math.min(Math.max(videoRef.current.currentTime + delta, 0), duration);
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleSpeedChange = (speed) => {
+    setPlaybackSpeed(speed);
     if (videoRef.current) {
-      videoRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
+      videoRef.current.playbackRate = speed;
     }
   };
 
+  const handleVolumeChange = (newVolume) => {
+    setVolume(newVolume);
+    if (newVolume > 0) setPrevVolume(newVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume;
+      videoRef.current.muted = newVolume === 0;
+    }
+  };
+
+  const toggleMute = () => {
+    if (volume === 0) {
+      handleVolumeChange(prevVolume || 1);
+    } else {
+      setPrevVolume(volume);
+      handleVolumeChange(0);
+    }
+  };
+
+  // ADDING ANNOTATIONS — keep color in state (for UI) but strip on export
   const addAnnotation = (actionType) => {
     if (!videoRef.current) return;
-    
     const timestamp = videoRef.current.currentTime;
     const newAnnotation = {
       id: Date.now(),
       type: actionType.id,
       label: actionType.label,
-      color: actionType.color,
-      timestamp: timestamp,
+      color: actionType.color,          // keep color for UI
+      timestamp,
       formattedTime: formatTime(timestamp),
       gameClockTime: gameClockTime || 'N/A'
     };
-    
-    setAnnotations([...annotations, newAnnotation].sort((a, b) => a.timestamp - b.timestamp));
+    setAnnotations([newAnnotation, ...annotations]);
+  };
+
+  const addCustomAnnotation = () => {
+    if (!videoRef.current || !customAnnotation.trim()) return;
+    const timestamp = videoRef.current.currentTime;
+    const newAnnotation = {
+      id: Date.now(),
+      type: 'Other',
+      label: customAnnotation.trim(),
+      color: 'bg-gray-500',            // neutral color for custom actions
+      timestamp,
+      formattedTime: formatTime(timestamp),
+      gameClockTime: gameClockTime || 'N/A'
+    };
+    setAnnotations([newAnnotation, ...annotations]);
+    setCustomAnnotation('');
   };
 
   const deleteAnnotation = (id) => {
-    setAnnotations(annotations.filter(ann => ann.id !== id));
+    setAnnotations(annotations.filter((a) => a.id !== id));
   };
 
   const seekToAnnotation = (timestamp) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = timestamp;
-      setCurrentTime(timestamp);
-    }
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = timestamp;
+    setCurrentTime(timestamp);
   };
 
   const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // OCR Functions
-  const handleMouseDown = (e) => {
-    if (!isSelectingRegion || !videoContainerRef.current) return;
-    
-    const rect = videoContainerRef.current.getBoundingClientRect();
-    setDragStart({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    });
+  // EXPORT HELPERS — remove color here only
+  const getSafeExportName = (ext) => {
+    const base = exportName.trim() !== '' ? exportName.trim() : 'annotations';
+    return `${base}.${ext}`;
   };
 
-  const handleMouseMove = (e) => {
-    if (!isSelectingRegion || !dragStart || !videoContainerRef.current) return;
-    
-    const rect = videoContainerRef.current.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-    
-    setOcrRegion({
-      x: Math.min(dragStart.x, currentX),
-      y: Math.min(dragStart.y, currentY),
-      width: Math.abs(currentX - dragStart.x),
-      height: Math.abs(currentY - dragStart.y)
-    });
-  };
+  const getCleanAnnotations = () =>
+    annotations.map(({ color, ...rest }) => rest); // strips color only for export
 
-  const handleMouseUp = () => {
-    if (isSelectingRegion && ocrRegion && ocrRegion.width > 10 && ocrRegion.height > 10) {
-      setIsSelectingRegion(false);
-      setDragStart(null);
-      performOcr();
-    }
-  };
-
-  const startRegionSelection = () => {
-    setIsSelectingRegion(true);
-    setOcrRegion(null);
-    setOcrText('');
-  };
-
-  const performOcr = async () => {
-    if (!videoRef.current || !ocrRegion) return;
-    
-    setIsProcessingOcr(true);
-    
-    try {
-      const canvas = document.createElement('canvas');
-      const video = videoRef.current;
-      
-      // Get video dimensions
-      const videoRect = video.getBoundingClientRect();
-      const scaleX = video.videoWidth / videoRect.width;
-      const scaleY = video.videoHeight / videoRect.height;
-      
-      // Scale OCR region to actual video dimensions
-      const scaledRegion = {
-        x: ocrRegion.x * scaleX,
-        y: ocrRegion.y * scaleY,
-        width: ocrRegion.width * scaleX,
-        height: ocrRegion.height * scaleY
-      };
-      
-      canvas.width = scaledRegion.width;
-      canvas.height = scaledRegion.height;
-      
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(
-        video,
-        scaledRegion.x,
-        scaledRegion.y,
-        scaledRegion.width,
-        scaledRegion.height,
-        0,
-        0,
-        scaledRegion.width,
-        scaledRegion.height
-      );
-      
-      const { data: { text } } = await Tesseract.recognize(
-        canvas.toDataURL(),
-        'eng',
-        {
-          logger: m => console.log(m)
-        }
-      );
-      
-      const cleanedText = text.trim();
-      setOcrText(cleanedText);
-      setGameClockTime(cleanedText);
-      
-    } catch (error) {
-      console.error('OCR Error:', error);
-      alert('Failed to perform OCR. Please try again.');
-    } finally {
-      setIsProcessingOcr(false);
-    }
-  };
-
-  // Auto OCR every second when enabled
-  useEffect(() => {
-    if (!autoOcrEnabled || !ocrRegion || !videoRef.current) return;
-    
-    const runOcr = async () => {
-      if (isProcessingOcr) return;
-      
-      setIsProcessingOcr(true);
-      
-      try {
-        const canvas = document.createElement('canvas');
-        const video = videoRef.current;
-        
-        const videoRect = video.getBoundingClientRect();
-        const scaleX = video.videoWidth / videoRect.width;
-        const scaleY = video.videoHeight / videoRect.height;
-        
-        const scaledRegion = {
-          x: ocrRegion.x * scaleX,
-          y: ocrRegion.y * scaleY,
-          width: ocrRegion.width * scaleX,
-          height: ocrRegion.height * scaleY
-        };
-        
-        canvas.width = scaledRegion.width;
-        canvas.height = scaledRegion.height;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(
-          video,
-          scaledRegion.x,
-          scaledRegion.y,
-          scaledRegion.width,
-          scaledRegion.height,
-          0,
-          0,
-          scaledRegion.width,
-          scaledRegion.height
-        );
-        
-        const { data: { text } } = await Tesseract.recognize(
-          canvas.toDataURL(),
-          'eng',
-          {
-            logger: m => console.log(m)
-          }
-        );
-        
-        const cleanedText = text.trim();
-        setOcrText(cleanedText);
-        setGameClockTime(cleanedText);
-        
-      } catch (error) {
-        console.error('OCR Error:', error);
-      } finally {
-        setIsProcessingOcr(false);
-      }
-    };
-    
-    const interval = setInterval(runOcr, 1000);
-    
-    return () => clearInterval(interval);
-  }, [autoOcrEnabled, ocrRegion, isProcessingOcr]);
-
-  const exportAnnotations = () => {
-    const dataStr = JSON.stringify(annotations, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
+  const exportAnnotationsJSON = () => {
+    const cleanAnnotations = getCleanAnnotations();
+    const dataStr = JSON.stringify(cleanAnnotations, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'annotations.json';
+    link.download = getSafeExportName('json');
+    link.click();
+  };
+
+  const exportAnnotationsCSV = () => {
+    const cleanAnnotations = getCleanAnnotations();
+    const headers = ['id', 'type', 'label', 'timestamp', 'formattedTime', 'gameClockTime'];
+
+    const escape = (value) => {
+      if (value === null || value === undefined) return '""';
+      const str = String(value).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = cleanAnnotations.map((ann) =>
+      headers.map((field) => escape(ann[field])).join(',')
+    );
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = getSafeExportName('csv');
     link.click();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-8">
-      {/* Hidden file input - always rendered */}
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-4">
       <input
         type="file"
         ref={fileInputRef}
@@ -318,245 +222,247 @@ export default function VideoAnnotator() {
         accept="video/*"
         style={{ display: 'none' }}
       />
-      
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+
+      <div className="max-w-full mx-auto">
+        <h1 className="text-3xl font-bold mb-4 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
           Sports Non Verbal Communication
         </h1>
 
-        {/* Upload Section */}
         {!videoSrc && (
-          <div className="bg-gray-800 rounded-lg p-12 mb-8 border-2 border-dashed border-gray-600 hover:border-blue-500 transition-colors">
+          <div className="bg-gray-800 rounded-lg p-12 mb-8 border-2 border-dashed border-gray-600 hover:border-blue-500 transition">
             <button
               onClick={() => fileInputRef.current && fileInputRef.current.click()}
-              className="w-full flex flex-col items-center gap-4 text-gray-400 hover:text-blue-400 transition-colors"
+              className="w-full flex flex-col items-center gap-4 text-gray-400 hover:text-blue-400"
             >
               <Upload size={64} />
               <span className="text-xl">Click to upload video</span>
-              <span className="text-sm">Supports MP4, WebM, and other video formats</span>
+              <span className="text-sm">Supports MP4, WebM, etc.</span>
             </button>
           </div>
         )}
 
-        {/* Video Player Section */}
         {videoSrc && (
-          <div className="space-y-6">
-            <div className="bg-gray-800 rounded-lg p-6">
-              <div 
-                ref={videoContainerRef}
-                className="relative"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                style={{ cursor: isSelectingRegion ? 'crosshair' : 'pointer' }}
-              >
+          <div className="flex gap-4">
+            {/* LEFT SIDE */}
+            <div className="flex-[7] flex flex-col gap-3">
+              <div className="bg-gray-800 rounded-lg p-3">
                 <video
                   ref={videoRef}
                   src={videoSrc}
                   onTimeUpdate={handleTimeUpdate}
                   onLoadedMetadata={handleLoadedMetadata}
                   onClick={handleVideoClick}
-                  className="w-full rounded-lg"
+                  className="w-full rounded-lg cursor-pointer"
+                  style={{ maxHeight: '60vh' }}
                   onEnded={() => setIsPlaying(false)}
-                  style={{ pointerEvents: isSelectingRegion ? 'none' : 'auto' }}
                 />
-                
-                {/* OCR Region Overlay */}
-                {ocrRegion && (
+
+                {/* PLAYER CONTROLS */}
+                <div className="mt-2 space-y-2">
                   <div
-                    className="absolute border-4 border-green-500 bg-green-500 bg-opacity-20"
-                    style={{
-                      left: `${ocrRegion.x}px`,
-                      top: `${ocrRegion.y}px`,
-                      width: `${ocrRegion.width}px`,
-                      height: `${ocrRegion.height}px`,
-                      pointerEvents: 'none'
-                    }}
+                    className="relative h-2 bg-gray-700 rounded-full cursor-pointer group"
+                    onClick={handleSeek}
                   >
-                    <div className="absolute -top-8 left-0 bg-green-500 text-white px-2 py-1 rounded text-xs font-bold">
-                      Clock Region
+                    <div
+                      className="absolute h-full bg-red-600 rounded-full transition-all"
+                      style={{ width: `${(currentTime / duration) * 100}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handlePlayPause}
+                      className="bg-blue-600 hover:bg-blue-700 p-2 rounded-full"
+                    >
+                      {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                    </button>
+
+                    <span className="text-sm font-mono">
+                      {formatTime(currentTime)} / {formatTime(duration)}
+                    </span>
+
+                    {/* SPEED */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">Speed:</span>
+                      <select
+                        value={playbackSpeed}
+                        onChange={(e) => handleSpeedChange(Number(e.target.value))}
+                        className="bg-gray-700 text-white px-2 py-1 text-sm rounded border-2 border-gray-600 focus:border-blue-500"
+                      >
+                        {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((s) => (
+                          <option key={s} value={s}>
+                            {s}x
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  </div>
-                )}
-                
-                {isSelectingRegion && (
-                  <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold text-sm">
-                    Draw a box around the game clock
-                  </div>
-                )}
-              </div>
-              
-              {/* Custom Video Controls */}
-              <div className="mt-4 space-y-3">
-                {/* Progress Bar */}
-                <div 
-                  className="relative h-2 bg-gray-700 rounded-full cursor-pointer group"
-                  onClick={handleSeek}
-                >
-                  <div 
-                    className="absolute h-full bg-red-600 rounded-full transition-all"
-                    style={{ width: `${(currentTime / duration) * 100}%` }}
-                  />
-                  <div 
-                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ left: `${(currentTime / duration) * 100}%`, transform: 'translate(-50%, -50%)' }}
-                  />
-                </div>
 
-                {/* Controls Row */}
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={handlePlayPause}
-                    className="bg-blue-600 hover:bg-blue-700 p-3 rounded-full transition-colors"
-                  >
-                    {isPlaying ? <Pause size={24} /> : <Play size={24} />}
-                  </button>
-                  
-                  <span className="text-lg font-mono">
-                    {formatTime(currentTime)} / {formatTime(duration)}
-                  </span>
-                  
-                  <button
-                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                    className="ml-auto bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg flex items-center gap-2"
-                  >
-                    <Upload size={20} />
-                    Upload New Video
-                  </button>
+                    {/* VOLUME */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={toggleMute}
+                        className="bg-gray-700 hover:bg-gray-600 p-2 rounded-full"
+                      >
+                        {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                      </button>
+
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={volume}
+                        onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                        className="w-24 accent-blue-400"
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                      className="ml-auto bg-gray-700 hover:bg-gray-600 px-3 py-1 text-sm rounded flex items-center gap-2"
+                    >
+                      <Upload size={16} />
+                      Upload
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* OCR Controls */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h2 className="text-2xl font-bold mb-4">Game Clock OCR</h2>
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={startRegionSelection}
-                    disabled={isSelectingRegion}
-                    className={`${isSelectingRegion ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-colors`}
-                  >
-                    <Square size={20} />
-                    {ocrRegion ? 'Reselect Clock Region' : 'Select Clock Region'}
-                  </button>
-                  
-                  {ocrRegion && (
-                    <>
+              {/* ANNOTATIONS */}
+              <div className="bg-gray-800 rounded-lg p-3 flex flex-col min-h-[260px] max-h-[360px]">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold">
+                    Annotations ({annotations.length})
+                  </h2>
+
+                  {annotations.length > 0 && (
+                    <div className="flex gap-2">
                       <button
-                        onClick={performOcr}
-                        disabled={isProcessingOcr}
-                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-colors"
+                        onClick={exportAnnotationsJSON}
+                        className="bg-green-600 hover:bg-green-700 px-3 py-1 text-xs rounded flex items-center gap-1"
                       >
-                        <Camera size={20} />
-                        {isProcessingOcr ? 'Reading...' : 'Read Clock Now'}
+                        <Download size={14} />
+                        JSON
                       </button>
-                      
                       <button
-                        onClick={() => setAutoOcrEnabled(!autoOcrEnabled)}
-                        className={`${autoOcrEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'} px-4 py-2 rounded-lg font-semibold transition-colors`}
+                        onClick={exportAnnotationsCSV}
+                        className="bg-yellow-500 hover:bg-yellow-600 px-3 py-1 text-xs rounded flex items-center gap-1 text-black font-semibold"
                       >
-                        {autoOcrEnabled ? '⏸ Auto-Read ON' : '▶ Auto-Read OFF'}
+                        <Download size={14} />
+                        CSV
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
-                
-                {ocrText && (
-                  <div className="bg-gray-700 rounded-lg p-4">
-                    <div className="text-sm text-gray-400 mb-1">Last OCR Result:</div>
-                    <div className="text-xl font-bold text-green-400">{ocrText}</div>
+
+                {/* EXPORT NAME INPUT */}
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-xs text-gray-300">Export name:</label>
+                  <input
+                    type="text"
+                    value={exportName}
+                    onChange={(e) => setExportName(e.target.value)}
+                    placeholder="e.g., hawks-jazz-q1"
+                    className="bg-gray-700 text-white px-2 py-1 text-xs rounded border border-gray-600 focus:border-blue-500 flex-1"
+                  />
+                </div>
+
+                {annotations.length === 0 ? (
+                  <p className="text-gray-400 text-center py-6 text-sm">
+                    No annotations yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2 overflow-y-auto flex-1 pr-2">
+                    {annotations.map((ann) => (
+                      <div
+                        key={ann.id}
+                        className="bg-gray-700 rounded-lg p-3 flex items-center justify-between hover:bg-gray-600 transition group"
+                      >
+                        <button
+                          onClick={() => seekToAnnotation(ann.timestamp)}
+                          className="flex items-center gap-2 flex-1 text-left"
+                        >
+                          <span className={`${ann.color} px-2 py-1 rounded-full text-xs font-semibold`}>
+                            {ann.formattedTime}
+                          </span>
+
+                          {ann.gameClockTime && ann.gameClockTime !== 'N/A' && (
+                            <span className="bg-orange-600 px-2 py-1 rounded-full text-xs font-semibold">
+                              {ann.gameClockTime}
+                            </span>
+                          )}
+
+                          <span className="font-medium text-sm">
+                            {ann.label}
+                          </span>
+                        </button>
+
+                        <button
+                          onClick={() => deleteAnnotation(ann.id)}
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
-                
-                <div className="text-sm text-gray-400">
-                  <p>• Select the region where the game clock appears in the video</p>
-                  <p>• Use "Read Clock Now" to manually capture the time</p>
-                  <p>• Enable "Auto-Read" to automatically read every second</p>
-                  <p>• The OCR result will auto-fill the Game Clock field below</p>
-                </div>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h2 className="text-2xl font-bold mb-4">Non-Verbal Communication Actions</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {actionTypes.map(action => (
-                  <button
-                    key={action.id}
-                    onClick={() => addAnnotation(action)}
-                    className={`${action.color} hover:opacity-80 px-6 py-4 rounded-lg font-semibold transition-opacity shadow-lg hover:shadow-xl transform hover:scale-105 transition-transform`}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-              
-              {/* Game Clock Input */}
-              <div className="mt-6 flex items-center gap-4">
-                <label className="text-lg font-semibold">Game Clock:</label>
-                <input
-                  type="text"
-                  value={gameClockTime}
-                  onChange={(e) => setGameClockTime(e.target.value)}
-                  placeholder="e.g., 10:45 Q2"
-                  className="bg-gray-700 text-white px-4 py-2 rounded-lg flex-1 max-w-xs border-2 border-gray-600 focus:border-blue-500 outline-none"
-                />
-                <span className="text-sm text-gray-400">Enter game time before clicking action buttons</span>
-              </div>
-            </div>
+            {/* RIGHT SIDE — ACTION BUTTONS */}
+            <div className="flex-[3] overflow-y-auto">
+              <div className="bg-gray-800 rounded-lg p-3 sticky top-0">
+                <h2 className="text-lg font-bold mb-3">
+                  Non-Verbal Communication Actions
+                </h2>
 
-            {/* Annotations Timeline */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold">Annotations ({annotations.length})</h2>
-                {annotations.length > 0 && (
-                  <button
-                    onClick={exportAnnotations}
-                    className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg flex items-center gap-2"
-                  >
-                    <Download size={20} />
-                    Export
-                  </button>
-                )}
-              </div>
-              
-              {annotations.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">
-                  No annotations yet. Click an action button while playing the video to add one.
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {annotations.map(ann => (
-                    <div
-                      key={ann.id}
-                      className="bg-gray-700 rounded-lg p-4 flex items-center justify-between hover:bg-gray-600 transition-colors group"
+                <div className="grid grid-cols-2 gap-2">
+                  {actionTypes.map((action) => (
+                    <button
+                      key={action.id}
+                      onClick={() => addAnnotation(action)}
+                      className={`${action.color} hover:opacity-80 px-3 py-3 text-base rounded font-bold`}
                     >
-                      <button
-                        onClick={() => seekToAnnotation(ann.timestamp)}
-                        className="flex items-center gap-4 flex-1 text-left"
-                      >
-                        <span className={`${ann.color} px-3 py-1 rounded-full text-sm font-semibold`}>
-                          {ann.formattedTime}
-                        </span>
-                        {ann.gameClockTime && ann.gameClockTime !== 'N/A' && (
-                          <span className="bg-orange-600 px-3 py-1 rounded-full text-sm font-semibold">
-                            {ann.gameClockTime}
-                          </span>
-                        )}
-                        <span className="font-medium">{ann.label}</span>
-                      </button>
-                      <button
-                        onClick={() => deleteAnnotation(ann.id)}
-                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
+                      {action.label}
+                    </button>
                   ))}
                 </div>
-              )}
+
+                {/* CUSTOM ANNOTATION */}
+                <div className="mt-3 p-2 bg-gray-700 rounded">
+                  <h3 className="text-sm font-bold mb-2">Custom Annotation</h3>
+                  <input
+                    type="text"
+                    value={customAnnotation}
+                    onChange={(e) => setCustomAnnotation(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addCustomAnnotation()}
+                    placeholder="Type custom action"
+                    className="bg-gray-600 text-white px-2 py-2 text-sm rounded w-full mb-2 border border-gray-500 focus:border-purple-500"
+                  />
+                  <button
+                    onClick={addCustomAnnotation}
+                    disabled={!customAnnotation.trim()}
+                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 px-3 py-2 text-sm rounded font-bold"
+                  >
+                    Add Other
+                  </button>
+                </div>
+
+                {/* GAME CLOCK */}
+                <div className="mt-3 p-2 bg-gray-700 rounded">
+                  <label className="text-sm font-bold block mb-2">
+                    Game Clock:
+                  </label>
+                  <input
+                    type="text"
+                    value={gameClockTime}
+                    onChange={(e) => setGameClockTime(e.target.value)}
+                    placeholder="e.g., 10:45 Q2"
+                    className="bg-gray-600 text-white px-2 py-2 text-sm rounded w-full border border-gray-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}
