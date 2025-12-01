@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Play, Pause, Upload, Download, Trash2, Volume2, VolumeX } from 'lucide-react';
 
 export default function VideoAnnotator() {
@@ -13,9 +13,13 @@ export default function VideoAnnotator() {
   const [volume, setVolume] = useState(1);
   const [prevVolume, setPrevVolume] = useState(1);
   const [exportName, setExportName] = useState('annotations');
+  const [team, setTeam] = useState()
+  const [teams, setTeams] = useState(["Team A", "Team B"]);
+  const [folderFiles, setFolderFiles] = useState([]);
 
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
 
   const actionTypes = [
     { id: 'Eye Contact', label: 'Eye Contact', color: 'bg-blue-500' },
@@ -25,6 +29,32 @@ export default function VideoAnnotator() {
     { id: 'Defensive Switch', label: 'Defensive Switch', color: 'bg-yellow-500' },
     { id: 'Nod', label: 'Nod', color: 'bg-indigo-500' }
   ];
+
+  const teamColors = {
+    "Jazz": "#753bbd",
+    "Hawks": "#e03a3e",
+    "Magic": "#0077c0",
+    "Rockets": "#ce1141",
+    "Nuggets": "#0e2240",
+    "Kings": "#5a2d81",
+    "Spurs": "#c4ced4",
+    "Warriors": "#1d428a",
+    "Thunder": "#ef3b24",
+    "Lakers": "#552583"
+  }
+
+    const seekBy = useCallback(
+    (delta) => {
+      if (!videoRef.current) return;
+      const newTime = Math.min(
+        Math.max(videoRef.current.currentTime + delta, 0),
+        duration || 0
+      );
+      videoRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    },
+    [duration]
+  );
 
   // Keyboard: space + left/right skip
   useEffect(() => {
@@ -46,7 +76,7 @@ export default function VideoAnnotator() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentTime, duration]);
+  }, [seekBy]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -58,8 +88,92 @@ export default function VideoAnnotator() {
       setPlaybackSpeed(1);
       setVolume(1);
       setPrevVolume(1);
+      const baseName = file.name.replace(/\.[^/.]+$/, "");
+      setExportName(baseName);
     }
   };
+
+  // get the names of the teams from the folder name on upload
+  function extractTeamsFromFolderName(folderName) {
+    const parts = folderName.split("_");
+
+    // default if something's wrong
+    if (parts.length < 2) return ["Team A", "Team B"];
+
+    const teamA = parts[0].replace(/[^a-zA-Z0-9 ]+/g, " ").trim();
+    const teamB = parts[1].replace(/[^a-zA-Z0-9 ]+/g, " ").trim();
+
+    return [capitalizeWords(teamA), capitalizeWords(teamB)];
+  }
+
+  // capitalize the team names
+  function capitalizeWords(str) {
+    return str
+      .split(/\s+/)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+  }
+
+  // sorts the files in the folder window from the start of the game
+  function sortFiles(files) {
+    return [...files].sort((a, b) => {
+      const parse = (file) => {
+        const name = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+        const parts = name.split("_");
+
+        // Expect: ["Q1", "-", "115700", ...]
+        const quarterPart = parts[0];   // "Q1"
+        const timePart = parts[2];      // "115700"
+
+        // Extract quarter number
+        const quarterMatch = quarterPart.match(/Q(\d+)/i);
+        const quarter = quarterMatch ? parseInt(quarterMatch[1], 10) : 99;
+
+        // Time is a string like "115700", convert safely to integer
+        const time = parseInt(timePart, 10) || 0;
+
+        return { quarter, time };
+      };
+
+      const A = parse(a);
+      const B = parse(b);
+
+      // Sort first by quarter, then by time within quarter
+      if (A.quarter !== B.quarter) return A.quarter - B.quarter;
+      return B.time - A.time;
+    });
+  }
+
+
+  const handleFolderSelect = (e) => {
+    const files = Array.from(e.target.files);
+    setFolderFiles(sortFiles(files));
+
+    if (files.length > 0) {
+      // Get the folder name from first file’s path
+      const folderName = files[0].webkitRelativePath.split("/")[0];
+
+      const [team1, team2] = extractTeamsFromFolderName(folderName);
+
+      setTeams([team1, team2]);  // update team selection buttons
+      setTeam(team1);            // default selected team
+    }
+  }
+
+  // loads video into player once its chosen from folder window
+  const loadVideoFromFile = (file) => {
+    const url = URL.createObjectURL(file);
+    setVideoSrc(url);
+    setAnnotations([]);
+    setCurrentTime(0);
+    setPlaybackSpeed(1);
+    setVolume(1);
+    setPrevVolume(1);
+    setExportName(url);
+    const baseName = file.name.replace(/\.[^/.]+$/, "");
+    setExportName(baseName);
+  };
+
 
   const handlePlayPause = () => {
     if (!videoRef.current) return;
@@ -91,11 +205,6 @@ export default function VideoAnnotator() {
     setCurrentTime(newTime);
   };
 
-  const seekBy = (delta) => {
-    const newTime = Math.min(Math.max(videoRef.current.currentTime + delta, 0), duration);
-    videoRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
 
   const handleSpeedChange = (speed) => {
     setPlaybackSpeed(speed);
@@ -133,7 +242,8 @@ export default function VideoAnnotator() {
       color: actionType.color,          // keep color for UI
       timestamp,
       formattedTime: formatTime(timestamp),
-      gameClockTime: gameClockTime || 'N/A'
+      gameClockTime: gameClockTime || 'N/A',
+      team
     };
     setAnnotations([newAnnotation, ...annotations]);
   };
@@ -148,7 +258,8 @@ export default function VideoAnnotator() {
       color: 'bg-gray-500',            // neutral color for custom actions
       timestamp,
       formattedTime: formatTime(timestamp),
-      gameClockTime: gameClockTime || 'N/A'
+      gameClockTime: gameClockTime || 'N/A',
+      team
     };
     setAnnotations([newAnnotation, ...annotations]);
     setCustomAnnotation('');
@@ -192,7 +303,7 @@ export default function VideoAnnotator() {
 
   const exportAnnotationsCSV = () => {
     const cleanAnnotations = getCleanAnnotations();
-    const headers = ['id', 'type', 'label', 'timestamp', 'formattedTime', 'gameClockTime'];
+    const headers = ['id', 'type', 'label', 'timestamp', 'formattedTime', 'gameClockTime', 'team'];
 
     const escape = (value) => {
       if (value === null || value === undefined) return '""';
@@ -223,25 +334,35 @@ export default function VideoAnnotator() {
         style={{ display: 'none' }}
       />
 
+      <input
+        type="file"
+        webkitdirectory="true"
+        directory="true"
+        multiple
+        ref={folderInputRef}
+        onChange={handleFolderSelect}
+        style={{ display: 'none' }}
+      />
+
       <div className="max-w-full mx-auto">
         <h1 className="text-3xl font-bold mb-4 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
           Sports Non Verbal Communication
         </h1>
 
-        {!videoSrc && (
+        {folderFiles.length === 0 && (
           <div className="bg-gray-800 rounded-lg p-12 mb-8 border-2 border-dashed border-gray-600 hover:border-blue-500 transition">
             <button
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              onClick={() => folderInputRef.current && folderInputRef.current.click()}
               className="w-full flex flex-col items-center gap-4 text-gray-400 hover:text-blue-400"
             >
               <Upload size={64} />
-              <span className="text-xl">Click to upload video</span>
-              <span className="text-sm">Supports MP4, WebM, etc.</span>
+              <span className="text-xl">Click to select folder</span>
+              <span className="text-sm">All files inside the folder will be displayed</span>
             </button>
           </div>
         )}
 
-        {videoSrc && (
+        {folderFiles.length > 0 && (
           <div className="flex gap-4">
             {/* LEFT SIDE */}
             <div className="flex-[7] flex flex-col gap-3">
@@ -256,6 +377,13 @@ export default function VideoAnnotator() {
                   style={{ maxHeight: '60vh' }}
                   onEnded={() => setIsPlaying(false)}
                 />
+
+                {!videoSrc && (
+                  <div className="text-gray-400 text-lg text-center">
+                    No file selected.<br />
+                    <span className="text-lg text-gray-400">Please choose a file from the folder window or upload a file.</span>
+                  </div>
+                )}
 
                 {/* PLAYER CONTROLS */}
                 <div className="mt-2 space-y-2">
@@ -395,6 +523,7 @@ export default function VideoAnnotator() {
                           <span className="font-medium text-sm">
                             {ann.label}
                           </span>
+
                         </button>
 
                         <button
@@ -412,6 +541,31 @@ export default function VideoAnnotator() {
 
             {/* RIGHT SIDE — ACTION BUTTONS */}
             <div className="flex-[3] overflow-y-auto">
+              {/* TEAM SELECTORS */}
+              <div className="mb-4 p-3 bg-gray-700 rounded">
+                <h3 className="text-sm font-bold mb-2">Team</h3>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {teams.map((t) => {
+                    const color = teamColors[t];
+                    const isActive = (team === t);
+
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => setTeam(t)}
+                        style={{
+                          backgroundColor: isActive ? color : "#444",
+                          border: `2px solid ${color}`,
+                        }}
+                        className={`px-3 py-2 rounded font-bold text-white hover:opacity-90`}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="bg-gray-800 rounded-lg p-3 sticky top-0">
                 <h2 className="text-lg font-bold mb-3">
                   Non-Verbal Communication Actions
@@ -462,6 +616,34 @@ export default function VideoAnnotator() {
                     className="bg-gray-600 text-white px-2 py-2 text-sm rounded w-full border border-gray-500 focus:border-blue-500"
                   />
                 </div>
+
+                {/* FOLDER UPLOAD */}
+                  <div className="bg-gray-800 rounded-lg p-3 mt-4">
+                    <button
+                      onClick={() => folderInputRef.current && folderInputRef.current.click()}
+                      className="bg-gray-700 hover:bg-gray-600 px-3 py-1 text-sm rounded flex items-center gap-2"
+                    >
+                      Choose Folder
+                    </button>
+                    <h2 className="text-lg font-bold mb-2">Folder Contents</h2>
+
+                    {folderFiles.length === 0 && (
+                      <p className="text-gray-400 text-sm">No folder selected.</p>
+                    )}
+                    {folderFiles.length > 0 && (
+                      <ul className="text-sm max-h-48 overflow-y-auto space-y-1">
+                        {folderFiles.map((file, idx) => (
+                          <li
+                            key={idx}
+                            onClick={() => loadVideoFromFile(file)}
+                            className="text-gray-300 cursor-pointer hover:text-blue-400"
+                          >
+                            {file.webkitRelativePath || file.name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
               </div>
             </div>
           </div>
