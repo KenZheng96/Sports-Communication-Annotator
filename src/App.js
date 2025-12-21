@@ -8,55 +8,156 @@ export default function VideoAnnotator() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [gameClockTime, setGameClockTime] = useState('');
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState(0.5);
   const [customAnnotation, setCustomAnnotation] = useState('');
   const [volume, setVolume] = useState(1);
   const [prevVolume, setPrevVolume] = useState(1);
   const [exportName, setExportName] = useState('annotations');
-  const [team, setTeam] = useState()
-  const [teams, setTeams] = useState(["Team A", "Team B"]);
+  const [team, setTeam] = useState();
+  const [teams, setTeams] = useState(['Team A', 'Team B']);
   const [folderFiles, setFolderFiles] = useState([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(null);
 
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
 
   const actionTypes = [
-    { id: 'Eye Contact', label: 'Eye Contact', color: 'bg-blue-500' },
-    { id: 'Screen', label: 'Screen', color: 'bg-green-500' },
-    { id: 'Direct', label: 'Directing', color: 'bg-red-500' },
-    { id: 'Call for Ball', label: 'Call for Ball', color: 'bg-purple-500' },
-    { id: 'Defensive Switch', label: 'Defensive Switch', color: 'bg-yellow-500' },
-    { id: 'Nod', label: 'Nod', color: 'bg-indigo-500' }
+    {
+      id: 'Eye Contact',
+      label: 'Eye Contact',
+      color: 'bg-blue-500',
+      definition: 'Visual connection between players to communicate intent, awareness, or coordination',
+    },
+    {
+      id: 'Screen',
+      label: 'Screen',
+      color: 'bg-green-500',
+      definition: 'Non-verbal signal or positioning to set or call for a pick/screen',
+    },
+    {
+      id: 'Direct',
+      label: 'Directing',
+      color: 'bg-red-500',
+      definition: 'Using gestures or body language to guide teammates into position or action',
+    },
+    {
+      id: 'Call for Ball',
+      label: 'Call for Ball',
+      color: 'bg-purple-500',
+      definition: 'Non-verbal signal requesting a pass, such as raising hand or showing target',
+    },
+    {
+      id: 'Move/Cut for Ball',
+      label: 'Move/Cut for Ball',
+      color: 'bg-yellow-500',
+      definition: 'Physical movement or cut signaling readiness to receive the ball',
+    },
+    {
+      id: 'Nod',
+      label: 'Nod',
+      color: 'bg-indigo-500',
+      definition: 'Head gesture indicating acknowledgment, agreement, or confirmation',
+    },
+
+    // NEW ACTIONS
+    {
+      id: 'Asking for Help',
+      label: 'Asking for Help',
+      color: 'bg-teal-500',
+      definition: 'Open-hand gesture calling another player towards oneself for assistance',
+    },
+    {
+      id: 'Recognition',
+      label: 'Recognition',
+      color: 'bg-emerald-500',
+      definition: 'Acknowledging a teammate after a positive play (e.g., pointing, clap, quick gesture)',
+    },
+    {
+      id: 'Frustration',
+      label: 'Frustration',
+      color: 'bg-rose-500',
+      definition: 'Body language showing frustration (e.g., dropping arms, slumping shoulders)',
+    },
+    {
+      id: 'Ball Our Way',
+      label: 'Ball Our Way',
+      color: 'bg-cyan-500',
+      definition: 'Signaling who has possession after a turnover (e.g., pointing direction)',
+    },
+    {
+      id: 'Encouragement',
+      label: 'Encouragement',
+      color: 'bg-lime-500',
+      definition: 'Signaling support/approval for a good play (e.g., clapping, thumbs up)',
+    },
+    {
+      id: 'Question Call',
+      label: 'Question Call',
+      color: 'bg-amber-500',
+      definition: 'Questioning a call (e.g., palms up/raised hands gesture toward officials)',
+    },
+    {
+      id: 'Celebration',
+      label: 'Celebration',
+      color: 'bg-pink-500',
+      definition: 'Celebratory gesture after a play (e.g., fist shake, quick pump)',
+    },
+    {
+      id: 'Point to Referee',
+      label: 'Point to Referee',
+      color: 'bg-orange-500',
+      definition: 'Directing attention to an official or signaling for a stoppage/timeout',
+    },
+    {
+      id: 'Call Play',
+      label: 'Call Play',
+      color: 'bg-violet-500',
+      definition: 'Signaling a specific offensive play/set to teammates',
+    },
+    {
+      id: 'Review Play',
+      label: 'Review Play',
+      color: 'bg-sky-500',
+      definition: 'Hand gesture indicating review (e.g., hand up with finger circling)',
+    },
+    {
+      id: 'Sweeping',
+      label: 'Sweeping',
+      color: 'bg-stone-500',
+      definition: 'Sweeping arm gesture instructing teammates to push/flow up the court',
+    },
+    {
+      id: 'Fake Screen',
+      label: 'Fake Screen',
+      color: 'bg-fuchsia-500',
+      definition: 'Approaching to set a screen, but slipping/leaving before contact is made',
+    },
   ];
 
   const teamColors = {
-    "Jazz": "#753bbd",
-    "Hawks": "#e03a3e",
-    "Magic": "#0077c0",
-    "Rockets": "#ce1141",
-    "Nuggets": "#0e2240",
-    "Kings": "#5a2d81",
-    "Spurs": "#c4ced4",
-    "Warriors": "#1d428a",
-    "Thunder": "#ef3b24",
-    "Lakers": "#552583"
-  }
+    Jazz: '#753bbd',
+    Hawks: '#e03a3e',
+    Magic: '#0077c0',
+    Rockets: '#ce1141',
+    Nuggets: '#0e2240',
+    Kings: '#5a2d81',
+    Spurs: '#c4ced4',
+    Warriors: '#1d428a',
+    Thunder: '#ef3b24',
+    Lakers: '#552583',
+  };
 
-    const seekBy = useCallback(
+  const seekBy = useCallback(
     (delta) => {
       if (!videoRef.current) return;
-      const newTime = Math.min(
-        Math.max(videoRef.current.currentTime + delta, 0),
-        duration || 0
-      );
+      const newTime = Math.min(Math.max(videoRef.current.currentTime + delta, 0), duration || 0);
       videoRef.current.currentTime = newTime;
       setCurrentTime(newTime);
     },
     [duration]
   );
 
-  // Keyboard: space + left/right skip
   useEffect(() => {
     const handleKeyPress = (e) => {
       if (!videoRef.current || e.target.matches('input, textarea')) return;
@@ -85,51 +186,42 @@ export default function VideoAnnotator() {
       setVideoSrc(url);
       setAnnotations([]);
       setCurrentTime(0);
-      setPlaybackSpeed(1);
+      setPlaybackSpeed(0.5);
       setVolume(1);
       setPrevVolume(1);
-      const baseName = file.name.replace(/\.[^/.]+$/, "");
+      const baseName = file.name.replace(/\.[^/.]+$/, '');
       setExportName(baseName);
+      setCurrentFileIndex(null);
     }
   };
 
-  // get the names of the teams from the folder name on upload
   function extractTeamsFromFolderName(folderName) {
-    const parts = folderName.split("_");
+    const parts = folderName.split('_');
+    if (parts.length < 2) return ['Team A', 'Team B'];
 
-    // default if something's wrong
-    if (parts.length < 2) return ["Team A", "Team B"];
-
-    const teamA = parts[0].replace(/[^a-zA-Z0-9 ]+/g, " ").trim();
-    const teamB = parts[1].replace(/[^a-zA-Z0-9 ]+/g, " ").trim();
-
+    const teamA = parts[0].replace(/[^a-zA-Z0-9 ]+/g, ' ').trim();
+    const teamB = parts[1].replace(/[^a-zA-Z0-9 ]+/g, ' ').trim();
     return [capitalizeWords(teamA), capitalizeWords(teamB)];
   }
 
-  // capitalize the team names
   function capitalizeWords(str) {
     return str
       .split(/\s+/)
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(" ");
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
   }
 
-  // sorts the files in the folder window from the start of the game
   function sortFiles(files) {
     return [...files].sort((a, b) => {
       const parse = (file) => {
-        const name = file.name.replace(/\.[^/.]+$/, ""); // remove extension
-        const parts = name.split("_");
+        const name = file.name.replace(/\.[^/.]+$/, '');
+        const parts = name.split('_');
 
-        // Expect: ["Q1", "-", "115700", ...]
-        const quarterPart = parts[0];   // "Q1"
-        const timePart = parts[2];      // "115700"
+        const quarterPart = parts[0];
+        const timePart = parts[2];
 
-        // Extract quarter number
         const quarterMatch = quarterPart.match(/Q(\d+)/i);
         const quarter = quarterMatch ? parseInt(quarterMatch[1], 10) : 99;
-
-        // Time is a string like "115700", convert safely to integer
         const time = parseInt(timePart, 10) || 0;
 
         return { quarter, time };
@@ -138,42 +230,36 @@ export default function VideoAnnotator() {
       const A = parse(a);
       const B = parse(b);
 
-      // Sort first by quarter, then by time within quarter
       if (A.quarter !== B.quarter) return A.quarter - B.quarter;
       return B.time - A.time;
     });
   }
 
-
   const handleFolderSelect = (e) => {
     const files = Array.from(e.target.files);
     setFolderFiles(sortFiles(files));
+    setCurrentFileIndex(null);
 
     if (files.length > 0) {
-      // Get the folder name from first file’s path
-      const folderName = files[0].webkitRelativePath.split("/")[0];
-
+      const folderName = files[0].webkitRelativePath.split('/')[0];
       const [team1, team2] = extractTeamsFromFolderName(folderName);
-
-      setTeams([team1, team2]);  // update team selection buttons
-      setTeam(team1);            // default selected team
+      setTeams([team1, team2]);
+      setTeam(team1);
     }
-  }
+  };
 
-  // loads video into player once its chosen from folder window
-  const loadVideoFromFile = (file) => {
+  const loadVideoFromFile = (file, index) => {
     const url = URL.createObjectURL(file);
     setVideoSrc(url);
     setAnnotations([]);
     setCurrentTime(0);
-    setPlaybackSpeed(1);
+    setPlaybackSpeed(0.5);
     setVolume(1);
     setPrevVolume(1);
-    setExportName(url);
-    const baseName = file.name.replace(/\.[^/.]+$/, "");
+    const baseName = file.name.replace(/\.[^/.]+$/, '');
     setExportName(baseName);
+    setCurrentFileIndex(index);
   };
-
 
   const handlePlayPause = () => {
     if (!videoRef.current) return;
@@ -205,12 +291,9 @@ export default function VideoAnnotator() {
     setCurrentTime(newTime);
   };
 
-
   const handleSpeedChange = (speed) => {
     setPlaybackSpeed(speed);
-    if (videoRef.current) {
-      videoRef.current.playbackRate = speed;
-    }
+    if (videoRef.current) videoRef.current.playbackRate = speed;
   };
 
   const handleVolumeChange = (newVolume) => {
@@ -223,15 +306,13 @@ export default function VideoAnnotator() {
   };
 
   const toggleMute = () => {
-    if (volume === 0) {
-      handleVolumeChange(prevVolume || 1);
-    } else {
+    if (volume === 0) handleVolumeChange(prevVolume || 1);
+    else {
       setPrevVolume(volume);
       handleVolumeChange(0);
     }
   };
 
-  // ADDING ANNOTATIONS — keep color in state (for UI) but strip on export
   const addAnnotation = (actionType) => {
     if (!videoRef.current) return;
     const timestamp = videoRef.current.currentTime;
@@ -239,11 +320,11 @@ export default function VideoAnnotator() {
       id: Date.now(),
       type: actionType.id,
       label: actionType.label,
-      color: actionType.color,          // keep color for UI
+      color: actionType.color,
       timestamp,
       formattedTime: formatTime(timestamp),
       gameClockTime: gameClockTime || 'N/A',
-      team
+      team,
     };
     setAnnotations([newAnnotation, ...annotations]);
   };
@@ -255,11 +336,11 @@ export default function VideoAnnotator() {
       id: Date.now(),
       type: 'Other',
       label: customAnnotation.trim(),
-      color: 'bg-gray-500',            // neutral color for custom actions
+      color: 'bg-gray-500',
       timestamp,
       formattedTime: formatTime(timestamp),
       gameClockTime: gameClockTime || 'N/A',
-      team
+      team,
     };
     setAnnotations([newAnnotation, ...annotations]);
     setCustomAnnotation('');
@@ -281,14 +362,12 @@ export default function VideoAnnotator() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // EXPORT HELPERS — remove color here only
   const getSafeExportName = (ext) => {
     const base = exportName.trim() !== '' ? exportName.trim() : 'annotations';
     return `${base}.${ext}`;
   };
 
-  const getCleanAnnotations = () =>
-    annotations.map(({ color, ...rest }) => rest); // strips color only for export
+  const getCleanAnnotations = () => annotations.map(({ color, ...rest }) => rest);
 
   const exportAnnotationsJSON = () => {
     const cleanAnnotations = getCleanAnnotations();
@@ -311,10 +390,7 @@ export default function VideoAnnotator() {
       return `"${str}"`;
     };
 
-    const rows = cleanAnnotations.map((ann) =>
-      headers.map((field) => escape(ann[field])).join(',')
-    );
-
+    const rows = cleanAnnotations.map((ann) => headers.map((field) => escape(ann[field])).join(','));
     const csvContent = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -380,8 +456,11 @@ export default function VideoAnnotator() {
 
                 {!videoSrc && (
                   <div className="text-gray-400 text-lg text-center">
-                    No file selected.<br />
-                    <span className="text-lg text-gray-400">Please choose a file from the folder window or upload a file.</span>
+                    No file selected.
+                    <br />
+                    <span className="text-lg text-gray-400">
+                      Please choose a file from the folder window or upload a file.
+                    </span>
                   </div>
                 )}
 
@@ -456,86 +535,114 @@ export default function VideoAnnotator() {
                 </div>
               </div>
 
-              {/* ANNOTATIONS */}
-              <div className="bg-gray-800 rounded-lg p-3 flex flex-col min-h-[260px] max-h-[360px]">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-bold">
-                    Annotations ({annotations.length})
-                  </h2>
+              {/* ANNOTATIONS + FOLDER CONTENTS under video */}
+              <div className="flex gap-3">
+                {/* ANNOTATIONS */}
+                <div className="bg-gray-800 rounded-lg p-3 flex flex-col min-h-[260px] max-h-[360px] flex-1">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-bold">Annotations ({annotations.length})</h2>
 
-                  {annotations.length > 0 && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={exportAnnotationsJSON}
-                        className="bg-green-600 hover:bg-green-700 px-3 py-1 text-xs rounded flex items-center gap-1"
-                      >
-                        <Download size={14} />
-                        JSON
-                      </button>
-                      <button
-                        onClick={exportAnnotationsCSV}
-                        className="bg-yellow-500 hover:bg-yellow-600 px-3 py-1 text-xs rounded flex items-center gap-1 text-black font-semibold"
-                      >
-                        <Download size={14} />
-                        CSV
-                      </button>
+                    {annotations.length > 0 && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={exportAnnotationsJSON}
+                          className="bg-green-600 hover:bg-green-700 px-3 py-1 text-xs rounded flex items-center gap-1"
+                        >
+                          <Download size={14} />
+                          JSON
+                        </button>
+                        <button
+                          onClick={exportAnnotationsCSV}
+                          className="bg-yellow-500 hover:bg-yellow-600 px-3 py-1 text-xs rounded flex items-center gap-1 text-black font-semibold"
+                        >
+                          <Download size={14} />
+                          CSV
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="text-xs text-gray-300">Export name:</label>
+                    <input
+                      type="text"
+                      value={exportName}
+                      onChange={(e) => setExportName(e.target.value)}
+                      placeholder="e.g., hawks-jazz-q1"
+                      className="bg-gray-700 text-white px-2 py-1 text-xs rounded border border-gray-600 focus:border-blue-500 flex-1"
+                    />
+                  </div>
+
+                  {annotations.length === 0 ? (
+                    <p className="text-gray-400 text-center py-6 text-sm">No annotations yet.</p>
+                  ) : (
+                    <div className="space-y-2 overflow-y-auto flex-1 pr-2">
+                      {annotations.map((ann) => (
+                        <div
+                          key={ann.id}
+                          className="bg-gray-700 rounded-lg p-3 flex items-center justify-between hover:bg-gray-600 transition group"
+                        >
+                          <button
+                            onClick={() => seekToAnnotation(ann.timestamp)}
+                            className="flex items-center gap-2 flex-1 text-left"
+                          >
+                            <span className={`${ann.color} px-2 py-1 rounded-full text-xs font-semibold`}>
+                              {ann.formattedTime}
+                            </span>
+
+                            {ann.gameClockTime && ann.gameClockTime !== 'N/A' && (
+                              <span className="bg-orange-600 px-2 py-1 rounded-full text-xs font-semibold">
+                                {ann.gameClockTime}
+                              </span>
+                            )}
+
+                            <span className="font-medium text-sm">{ann.label}</span>
+                          </button>
+
+                          <button
+                            onClick={() => deleteAnnotation(ann.id)}
+                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
 
-                {/* EXPORT NAME INPUT */}
-                <div className="flex items-center gap-2 mb-2">
-                  <label className="text-xs text-gray-300">Export name:</label>
-                  <input
-                    type="text"
-                    value={exportName}
-                    onChange={(e) => setExportName(e.target.value)}
-                    placeholder="e.g., hawks-jazz-q1"
-                    className="bg-gray-700 text-white px-2 py-1 text-xs rounded border border-gray-600 focus:border-blue-500 flex-1"
-                  />
-                </div>
-
-                {annotations.length === 0 ? (
-                  <p className="text-gray-400 text-center py-6 text-sm">
-                    No annotations yet.
-                  </p>
-                ) : (
-                  <div className="space-y-2 overflow-y-auto flex-1 pr-2">
-                    {annotations.map((ann) => (
-                      <div
-                        key={ann.id}
-                        className="bg-gray-700 rounded-lg p-3 flex items-center justify-between hover:bg-gray-600 transition group"
-                      >
-                        <button
-                          onClick={() => seekToAnnotation(ann.timestamp)}
-                          className="flex items-center gap-2 flex-1 text-left"
-                        >
-                          <span className={`${ann.color} px-2 py-1 rounded-full text-xs font-semibold`}>
-                            {ann.formattedTime}
-                          </span>
-
-                          {ann.gameClockTime && ann.gameClockTime !== 'N/A' && (
-                            <span className="bg-orange-600 px-2 py-1 rounded-full text-xs font-semibold">
-                              {ann.gameClockTime}
-                            </span>
-                          )}
-
-                          <span className="font-medium text-sm">
-                            {ann.label}
-                          </span>
-
-                        </button>
-
-                        <button
-                          onClick={() => deleteAnnotation(ann.id)}
-                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))}
+                {/* FOLDER CONTENTS */}
+                <div className="bg-gray-800 rounded-lg p-3 flex flex-col min-h-[260px] max-h-[360px] flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-lg font-bold">Folder Contents</h2>
+                    <button
+                      onClick={() => folderInputRef.current && folderInputRef.current.click()}
+                      className="bg-gray-700 hover:bg-gray-600 px-3 py-1 text-sm rounded flex items-center gap-2"
+                    >
+                      Choose Folder
+                    </button>
                   </div>
-                )}
+
+                  {folderFiles.length === 0 ? (
+                    <p className="text-gray-400 text-sm">No folder selected.</p>
+                  ) : (
+                    <ul className="text-sm overflow-y-auto space-y-1 flex-1">
+                      {folderFiles.map((file, idx) => (
+                        <li
+                          key={idx}
+                          onClick={() => loadVideoFromFile(file, idx)}
+                          className={`${
+                            currentFileIndex === idx
+                              ? 'text-blue-400 bg-blue-900/30 font-semibold'
+                              : 'text-gray-300 hover:text-blue-400'
+                          } cursor-pointer px-2 py-1 rounded transition`}
+                        >
+                          {file.webkitRelativePath || file.name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -547,17 +654,17 @@ export default function VideoAnnotator() {
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   {teams.map((t) => {
                     const color = teamColors[t];
-                    const isActive = (team === t);
+                    const isActive = team === t;
 
                     return (
                       <button
                         key={t}
                         onClick={() => setTeam(t)}
                         style={{
-                          backgroundColor: isActive ? color : "#444",
+                          backgroundColor: isActive ? color : '#444',
                           border: `2px solid ${color}`,
                         }}
-                        className={`px-3 py-2 rounded font-bold text-white hover:opacity-90`}
+                        className="px-3 py-2 rounded font-bold text-white hover:opacity-90"
                       >
                         {t}
                       </button>
@@ -567,18 +674,20 @@ export default function VideoAnnotator() {
               </div>
 
               <div className="bg-gray-800 rounded-lg p-3 sticky top-0">
-                <h2 className="text-lg font-bold mb-3">
-                  Non-Verbal Communication Actions
-                </h2>
+                <h2 className="text-lg font-bold mb-3">Non-Verbal Communication Actions</h2>
 
                 <div className="grid grid-cols-2 gap-2">
                   {actionTypes.map((action) => (
                     <button
                       key={action.id}
                       onClick={() => addAnnotation(action)}
-                      className={`${action.color} hover:opacity-80 px-3 py-3 text-base rounded font-bold`}
+                      title={action.definition}
+                      className={`${action.color} hover:opacity-80 px-3 py-3 text-base rounded font-bold relative group`}
                     >
                       {action.label}
+                      <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-48 text-center z-10 shadow-lg">
+                        {action.definition}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -602,48 +711,6 @@ export default function VideoAnnotator() {
                     Add Other
                   </button>
                 </div>
-
-                {/* GAME CLOCK */}
-                <div className="mt-3 p-2 bg-gray-700 rounded">
-                  <label className="text-sm font-bold block mb-2">
-                    Game Clock:
-                  </label>
-                  <input
-                    type="text"
-                    value={gameClockTime}
-                    onChange={(e) => setGameClockTime(e.target.value)}
-                    placeholder="e.g., 10:45 Q2"
-                    className="bg-gray-600 text-white px-2 py-2 text-sm rounded w-full border border-gray-500 focus:border-blue-500"
-                  />
-                </div>
-
-                {/* FOLDER UPLOAD */}
-                  <div className="bg-gray-800 rounded-lg p-3 mt-4">
-                    <button
-                      onClick={() => folderInputRef.current && folderInputRef.current.click()}
-                      className="bg-gray-700 hover:bg-gray-600 px-3 py-1 text-sm rounded flex items-center gap-2"
-                    >
-                      Choose Folder
-                    </button>
-                    <h2 className="text-lg font-bold mb-2">Folder Contents</h2>
-
-                    {folderFiles.length === 0 && (
-                      <p className="text-gray-400 text-sm">No folder selected.</p>
-                    )}
-                    {folderFiles.length > 0 && (
-                      <ul className="text-sm max-h-48 overflow-y-auto space-y-1">
-                        {folderFiles.map((file, idx) => (
-                          <li
-                            key={idx}
-                            onClick={() => loadVideoFromFile(file)}
-                            className="text-gray-300 cursor-pointer hover:text-blue-400"
-                          >
-                            {file.webkitRelativePath || file.name}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
               </div>
             </div>
           </div>
